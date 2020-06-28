@@ -3,14 +3,12 @@ package pbft
 import (
 	"fmt"
 	"sync"
-	"time"
 )
-
-const RunTickerInterval = time.Duration(1 * time.Millisecond)
 
 type Pbft struct {
 	mu       *sync.Mutex
-	peers    []*peerWrapper
+	servers  []peerWrapper
+	clients  []peerWrapper
 	n        int
 	f        int
 	me       int
@@ -19,24 +17,20 @@ type Pbft struct {
 	logs     map[int]*LogEntry
 	prepares map[int]map[int]string
 	commits  map[int]map[int]string
-	clients  map[int]*peerWrapper
+
+	debugCh chan interface{}
 }
 
 func (pf *Pbft) isPrimary() bool {
-	n := len(pf.peers)
-	return pf.me == pf.viewId%n
-}
-
-func (pf *Pbft) newClient(client *peerWrapper, clientId int) {
-	pf.mu.Lock()
-	defer pf.mu.Unlock()
-	pf.clients[clientId] = client
+	return pf.me == pf.viewId%pf.n
 }
 
 func (pf *Pbft) boradcast(rpcname string, rpcargs interface{}) {
+	pf.debugPrint("Boradcast: " + rpcname + "\n")
 	reply := &DefaultReply{}
-	for _, peer := range pf.peers {
-		peer.Call("Raft."+rpcname, rpcargs, reply)
+	for _, peer := range pf.servers {
+		p := peer
+		go p.Call("Pbft."+rpcname, rpcargs, reply)
 	}
 }
 
@@ -95,6 +89,8 @@ func (pf *Pbft) processPrepares(seqId int) {
 		commitArgs.Digest = maxDigest
 		commitArgs.ReplicaId = pf.me
 		pf.boradcast("Commit", commitArgs)
+
+		delete(pf.prepares, seqId)
 	}
 }
 
@@ -116,26 +112,42 @@ func (pf *Pbft) processCommits(seqId int) {
 		logEntry.Reply = *replyArgs
 
 		client := pf.clients[logEntry.Request.ClientId]
-		if client != nil {
-			defaultReply := &DefaultReply{}
-			client.Call("Client.Reply", replyArgs, defaultReply)
-		}
+		defaultReply := &DefaultReply{}
+		go client.Call("Client.Reply", replyArgs, defaultReply)
+
+		delete(pf.commits, seqId)
 	}
 }
 
-func MakePbft(peers []*peerWrapper, me int) *Pbft {
+func (pf *Pbft) getServerInfo() map[string]interface{} {
+	info := make(map[string]interface{})
+	pf.mu.Lock()
+	defer pf.mu.Unlock()
+	info["id"] = pf.me
+	info["viewId"] = pf.viewId
+	info["seqId"] = pf.seqId
+	info["n"] = pf.n
+	return info
+}
+
+func (pf *Pbft) debugPrint(msg string) {
+	pf.debugCh <- msg
+}
+
+func MakePbft(id int, serverPeers, clientPeers []peerWrapper, debugCh chan interface{}) *Pbft {
 	pf := &Pbft{}
 	pf.mu = &sync.Mutex{}
-	pf.peers = peers
-	pf.me = me
-	pf.clients = make(map[int]*peerWrapper)
+	pf.servers = serverPeers
+	pf.me = id
+	pf.clients = clientPeers
 	pf.viewId = 0
 	pf.seqId = 0
 	pf.logs = make(map[int]*LogEntry)
 	pf.prepares = make(map[int]map[int]string)
 	pf.commits = make(map[int]map[int]string)
-	pf.n = len(pf.peers)
+	pf.n = len(pf.servers)
 	pf.f = (pf.n - 1) / 3
+	pf.debugCh = debugCh
 
 	return pf
 }

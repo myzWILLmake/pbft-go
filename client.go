@@ -2,31 +2,40 @@ package pbft
 
 import (
 	"fmt"
+	"sync"
 	"time"
 )
 
 // save operation as string
 type Client struct {
+	mu       *sync.Mutex
 	me       int
 	n        int
 	f        int
-	peers    []*peerWrapper
+	peers    []peerWrapper
 	requests map[int64]string
 	replies  map[int64]map[int]string
+
+	debugCh chan interface{}
 }
 
 func (c *Client) boradcast(rpcname string, rpcargs interface{}) {
 	reply := &DefaultReply{}
 	for _, peer := range c.peers {
-		peer.Call("Raft."+rpcname, rpcargs, reply)
+		p := peer
+		go p.Call("Pbft."+rpcname, rpcargs, reply)
 	}
 }
 
-func (c *Client) NewRequest(command string) {
+func (c *Client) newRequest(command string) {
 	requestArgs := &RequestArgs{}
 	requestArgs.ClientId = c.me
 	requestArgs.Operation = command
 	requestArgs.Timestamp = time.Now().Unix()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	c.replies[requestArgs.Timestamp] = make(map[int]string)
 	c.requests[requestArgs.Timestamp] = command
 	c.boradcast("Request", requestArgs)
@@ -71,18 +80,25 @@ func (c *Client) acceptReply(timestamp int64, result string) {
 
 	// output the result
 	command := c.requests[timestamp]
-	fmt.Printf("Client [%d]: Command[%s] got Result[%s]\n", c.me, command, result)
+	msg := fmt.Sprintf("Client [%d]: Command[%s] got Result[%s]\n", c.me, command, result)
+	c.debugPrint(msg)
 
 	delete(c.requests, timestamp)
 	delete(c.replies, timestamp)
 }
 
-func MakeClient(peers []*peerWrapper, me int) *Client {
+func (c *Client) debugPrint(msg string) {
+	c.debugCh <- msg
+}
+
+func MakeClient(id int, peers []peerWrapper, ch chan interface{}) *Client {
 	c := &Client{}
-	c.me = me
+	c.mu = &sync.Mutex{}
+	c.me = id
 	c.peers = peers
 	c.requests = make(map[int64]string)
 	c.replies = make(map[int64]map[int]string)
+	c.debugCh = ch
 	c.n = len(c.peers)
 	c.f = (c.n - 1) / 3
 
