@@ -37,7 +37,8 @@ func (pf *Pbft) boradcast(rpcname string, rpcargs interface{}) {
 func (pf *Pbft) getReplyFromLog(args *RequestArgs) int {
 	// naive way
 	for seqId, log := range pf.logs {
-		if log.Request.ClientId == args.ClientId && log.Request.Timestamp == args.Timestamp {
+		if log.Request.ClientId == args.ClientId &&
+			log.Request.Timestamp == args.Timestamp {
 			return seqId
 		}
 	}
@@ -102,6 +103,9 @@ func (pf *Pbft) processCommits(seqId int) {
 	if len(pf.commits[seqId]) > 2*pf.f {
 		// commit the request and reply to client
 		logEntry := pf.logs[seqId]
+		if logEntry.ViewId != pf.viewId {
+			return
+		}
 
 		replyArgs := &ReplyArgs{}
 		replyArgs.ViewId = pf.viewId

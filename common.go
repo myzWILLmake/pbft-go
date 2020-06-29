@@ -4,6 +4,7 @@ type PbftPhase int
 
 type LogEntry struct {
 	SeqId   int
+	ViewId  int
 	Request RequestArgs
 	Reply   ReplyArgs
 }

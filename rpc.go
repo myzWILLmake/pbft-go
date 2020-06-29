@@ -22,6 +22,7 @@ func (pf *Pbft) Request(args *RequestArgs, reply *DefaultReply) error {
 		pf.seqId++
 
 		newLog := &LogEntry{}
+		newLog.ViewId = pf.viewId
 		newLog.SeqId = pf.seqId
 		newLog.Request = RequestArgs{args.Operation, args.Timestamp, args.ClientId}
 		pf.logs[pf.seqId] = newLog
@@ -61,6 +62,7 @@ func (pf *Pbft) Preprepare(args *PrePrepareAgrs, reply *DefaultReply) error {
 	newLog := &LogEntry{}
 	newLog.SeqId = args.SeqId
 	newLog.Request = args.Request
+	newLog.ViewId = pf.viewId
 	pf.logs[args.SeqId] = newLog
 
 	// save to prepares
