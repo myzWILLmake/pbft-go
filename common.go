@@ -1,5 +1,40 @@
 package pbft
 
+import "time"
+
+type TimerWithCancel struct {
+	d time.Duration
+	t *time.Timer
+	c chan interface{}
+	f func()
+}
+
+func NewTimerWithCancel(d time.Duration) *TimerWithCancel {
+	t := &TimerWithCancel{}
+	t.d = d
+	t.c = make(chan interface{})
+	return t
+}
+
+func (t *TimerWithCancel) Start() {
+	t.t = time.NewTimer(t.d)
+	go func() {
+		select {
+		case <-t.t.C:
+			t.f()
+		case <-t.c:
+		}
+	}()
+}
+
+func (t *TimerWithCancel) SetTimeout(f func()) {
+	t.f = f
+}
+
+func (t *TimerWithCancel) Cancel() {
+	t.c <- nil
+}
+
 type PbftPhase int
 
 type LogEntry struct {
@@ -45,4 +80,10 @@ type CommitArgs struct {
 	SeqId     int
 	Digest    string
 	ReplicaId int
+}
+
+type CheckpointArgs struct {
+	LastCommitted int
+	Digest        string
+	ReplicaId     int
 }

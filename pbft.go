@@ -3,20 +3,28 @@ package pbft
 import (
 	"fmt"
 	"sync"
+	"time"
 )
 
+const CheckPointSequenceInterval = 10
+const RequestTimeout = 5000
+
 type Pbft struct {
-	mu       *sync.Mutex
-	servers  []peerWrapper
-	clients  []peerWrapper
-	n        int
-	f        int
-	me       int
-	viewId   int
-	seqId    int
-	logs     map[int]*LogEntry
-	prepares map[int]map[int]string
-	commits  map[int]map[int]string
+	mu             *sync.Mutex
+	servers        []peerWrapper
+	clients        []peerWrapper
+	n              int
+	f              int
+	me             int
+	viewId         int
+	seqId          int
+	requestTimer   map[int64]*TimerWithCancel
+	logs           map[int]*LogEntry
+	prepares       map[int]map[int]string
+	commits        map[int]map[int]string
+	checkpoints    map[int]map[int]string
+	maxCommitted   int
+	lastCheckpoint int
 
 	debugCh chan interface{}
 }
@@ -32,6 +40,20 @@ func (pf *Pbft) boradcast(rpcname string, rpcargs interface{}) {
 		p := peer
 		go p.Call("Pbft."+rpcname, rpcargs, reply)
 	}
+}
+
+func (pf *Pbft) newRequestTimer(timestamp int64) {
+	if pf.requestTimer[timestamp] != nil {
+		pf.requestTimer[timestamp].Cancel()
+		delete(pf.requestTimer, timestamp)
+	}
+	newTimer := NewTimerWithCancel(time.Duration(RequestTimeout * time.Millisecond))
+	newTimer.SetTimeout(func() {
+		fmt.Println("timeout!!! Timestamp:", timestamp)
+		delete(pf.requestTimer, timestamp)
+	})
+	newTimer.Start()
+	pf.requestTimer[timestamp] = newTimer
 }
 
 func (pf *Pbft) getReplyFromLog(args *RequestArgs) int {
@@ -119,7 +141,71 @@ func (pf *Pbft) processCommits(seqId int) {
 		defaultReply := &DefaultReply{}
 		go client.Call("Client.Reply", replyArgs, defaultReply)
 
+		if seqId > pf.maxCommitted {
+			pf.maxCommitted = seqId
+			// multicast checkpoint
+			if pf.maxCommitted-pf.lastCheckpoint > CheckPointSequenceInterval {
+
+			}
+		}
 		delete(pf.commits, seqId)
+	}
+}
+
+func (pf *Pbft) saveCheckpoints(seqId int, replicaId int, digest string) {
+	if pf.checkpoints[seqId] == nil {
+		pf.checkpoints[seqId] = make(map[int]string)
+	}
+	pf.checkpoints[seqId][replicaId] = digest
+}
+
+func (pf *Pbft) processCheckpoints(seqId int) {
+	if pf.checkpoints[seqId] == nil {
+		return
+	}
+
+	if len(pf.checkpoints[seqId]) > 2*pf.f {
+		checkpoints := pf.checkpoints[seqId]
+		digestCnt := make(map[string]int)
+		isCheckpointValid := false
+		for _, digest := range checkpoints {
+			digestCnt[digest]++
+			if digestCnt[digest] > 2*pf.f {
+				isCheckpointValid = true
+				break
+			}
+		}
+
+		if isCheckpointValid {
+			pf.lastCheckpoint = seqId
+			pf.garbageCollect(seqId)
+		}
+	}
+}
+
+func (pf *Pbft) garbageCollect(seqId int) {
+	for id := range pf.prepares {
+		if id <= seqId {
+			delete(pf.prepares, id)
+		}
+	}
+
+	for id := range pf.commits {
+		if id <= seqId {
+			delete(pf.prepares, id)
+		}
+	}
+
+	for id := range pf.checkpoints {
+		if id <= seqId {
+			delete(pf.prepares, id)
+		}
+	}
+
+	for id, log := range pf.logs {
+		if id <= seqId && log.Reply.Timestamp == 0 {
+			delete(pf.logs, id)
+		}
 	}
 }
 
@@ -147,8 +233,11 @@ func MakePbft(id int, serverPeers, clientPeers []peerWrapper, debugCh chan inter
 	pf.viewId = 0
 	pf.seqId = 0
 	pf.logs = make(map[int]*LogEntry)
+	pf.requestTimer = make(map[int64]*TimerWithCancel)
 	pf.prepares = make(map[int]map[int]string)
 	pf.commits = make(map[int]map[int]string)
+	pf.maxCommitted = 0
+	pf.lastCheckpoint = 0
 	pf.n = len(pf.servers)
 	pf.f = (pf.n - 1) / 3
 	pf.debugCh = debugCh

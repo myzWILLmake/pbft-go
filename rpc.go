@@ -1,6 +1,8 @@
 package pbft
 
-import "fmt"
+import (
+	"fmt"
+)
 
 func (pf *Pbft) Request(args *RequestArgs, reply *DefaultReply) error {
 	pf.mu.Lock()
@@ -16,6 +18,8 @@ func (pf *Pbft) Request(args *RequestArgs, reply *DefaultReply) error {
 		}
 		return nil
 	}
+
+	pf.newRequestTimer(args.Timestamp)
 
 	if pf.isPrimary() {
 		// insert requset to log
@@ -107,6 +111,15 @@ func (pf *Pbft) Commit(args *CommitArgs, reply *DefaultReply) error {
 	// todo: check sequence number h~H
 	pf.saveCommits(args.SeqId, args.ReplicaId, args.Digest)
 	pf.processCommits(args.SeqId)
+	return nil
+}
+
+func (pf *Pbft) CheckPoint(args *CheckpointArgs, reply *DefaultReply) error {
+	pf.mu.Lock()
+	defer pf.mu.Unlock()
+
+	pf.debugPrint(fmt.Sprintf("Received Checkpoint[LastCommitted %d, Digest %s, Rep %d]", args.LastCommitted, args.Digest, args.ReplicaId))
+	pf.saveCheckpoints(args.LastCommitted, args.ReplicaId, args.Digest)
 	return nil
 }
 
