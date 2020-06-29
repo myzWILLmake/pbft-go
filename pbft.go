@@ -145,7 +145,12 @@ func (pf *Pbft) processCommits(seqId int) {
 			pf.maxCommitted = seqId
 			// multicast checkpoint
 			if pf.maxCommitted-pf.lastCheckpoint > CheckPointSequenceInterval {
-
+				checkpointArgs := &CheckpointArgs{}
+				checkpointArgs.LastCommitted = pf.maxCommitted
+				// todo: current state to digest
+				checkpointArgs.Digest = "checkpoint digest"
+				checkpointArgs.ReplicaId = pf.me
+				pf.boradcast("Checkpoint", checkpointArgs)
 			}
 		}
 		delete(pf.commits, seqId)
