@@ -10,21 +10,23 @@ const CheckPointSequenceInterval = 10
 const RequestTimeout = 5000
 
 type Pbft struct {
-	mu             *sync.Mutex
-	servers        []peerWrapper
-	clients        []peerWrapper
-	n              int
-	f              int
-	me             int
-	viewId         int
-	seqId          int
-	requestTimer   map[int64]*TimerWithCancel
-	logs           map[int]*LogEntry
-	prepares       map[int]map[int]string
-	commits        map[int]map[int]string
-	checkpoints    map[int]map[int]string
-	maxCommitted   int
-	lastCheckpoint int
+	mu                   *sync.Mutex
+	servers              []peerWrapper
+	clients              []peerWrapper
+	n                    int
+	f                    int
+	me                   int
+	viewId               int
+	seqId                int
+	requestTimer         map[int64]*TimerWithCancel
+	logs                 map[int]*LogEntry
+	prepares             map[int]map[int]string
+	commits              map[int]map[int]string
+	checkpoints          map[int]map[int]string
+	viewChanges          map[int]map[int]PreparedRequest
+	maxCommitted         int
+	lastCheckpointSeqId  int
+	lastCheckpointDigest string
 
 	debugCh chan interface{}
 }
@@ -49,11 +51,53 @@ func (pf *Pbft) newRequestTimer(timestamp int64) {
 	}
 	newTimer := NewTimerWithCancel(time.Duration(RequestTimeout * time.Millisecond))
 	newTimer.SetTimeout(func() {
-		fmt.Println("timeout!!! Timestamp:", timestamp)
+		fmt.Printf("Request timeout: Timestamp[%d]\n", timestamp)
 		delete(pf.requestTimer, timestamp)
+		// todo: timer for viewchange
+		pf.sendViewChange()
 	})
 	newTimer.Start()
 	pf.requestTimer[timestamp] = newTimer
+}
+
+func (pf *Pbft) sendViewChange() {
+	pf.mu.Lock()
+	defer pf.mu.Unlock()
+
+	// find all prepared but not committed request
+	preparedRequestSet := make(map[int]PreparedRequest)
+	for seqId, prepares := range pf.prepares {
+		log, ok := pf.logs[seqId]
+		if !ok {
+			continue
+		}
+		if log.Phase != PbftPhasecommitted && len(prepares) > 2*pf.f {
+			digestCnt := make(map[string]int)
+			isDigestValid := false
+			for _, digest := range prepares {
+				digestCnt[digest]++
+				if digestCnt[digest] > 2*pf.f {
+					isDigestValid = true
+					break
+				}
+			}
+			if isDigestValid {
+				preparedRequest := PreparedRequest{}
+				preparedRequest.Request = *log
+				preparedRequest.Prepares = prepares
+				preparedRequestSet[seqId] = preparedRequest
+			}
+		}
+	}
+
+	viewChangeArgs := &ViewChangeArgs{}
+	viewChangeArgs.ViewId = pf.viewId + 1
+	viewChangeArgs.ReplicaId = pf.me
+	viewChangeArgs.LastCheckpointDigest = pf.lastCheckpointDigest
+	viewChangeArgs.LastCheckpointSeqId = pf.lastCheckpointSeqId
+	viewChangeArgs.PreparedRequestSet = preparedRequestSet
+
+	pf.boradcast("ViewChange", viewChangeArgs)
 }
 
 func (pf *Pbft) getReplyFromLog(args *RequestArgs) int {
@@ -87,6 +131,11 @@ func (pf *Pbft) processPrepares(seqId int) {
 		return
 	}
 
+	logEntry, ok := pf.logs[seqId]
+	if !ok || logEntry.Phase != PbftPhasePrepare || logEntry.ViewId != pf.viewId {
+		return
+	}
+
 	if len(pf.prepares[seqId]) > 2*pf.f {
 		prepares := pf.prepares[seqId]
 		digestCnt := make(map[string]int)
@@ -106,6 +155,8 @@ func (pf *Pbft) processPrepares(seqId int) {
 		}
 
 		// go to commit phase
+		logEntry.Phase = PbftPhasecommit
+
 		commitArgs := &CommitArgs{}
 		commitArgs.SeqId = seqId
 		commitArgs.ViewId = pf.viewId
@@ -118,16 +169,18 @@ func (pf *Pbft) processPrepares(seqId int) {
 }
 
 func (pf *Pbft) processCommits(seqId int) {
-	if pf.prepares[seqId] == nil {
+	if pf.commits[seqId] == nil {
+		return
+	}
+
+	logEntry, ok := pf.logs[seqId]
+	if !ok || logEntry.Phase != PbftPhasecommit || logEntry.ViewId != pf.viewId {
 		return
 	}
 
 	if len(pf.commits[seqId]) > 2*pf.f {
 		// commit the request and reply to client
-		logEntry := pf.logs[seqId]
-		if logEntry.ViewId != pf.viewId {
-			return
-		}
+		logEntry.Phase = PbftPhasecommitted
 
 		replyArgs := &ReplyArgs{}
 		replyArgs.ViewId = pf.viewId
@@ -144,7 +197,7 @@ func (pf *Pbft) processCommits(seqId int) {
 		if seqId > pf.maxCommitted {
 			pf.maxCommitted = seqId
 			// multicast checkpoint
-			if pf.maxCommitted-pf.lastCheckpoint > CheckPointSequenceInterval {
+			if pf.maxCommitted-pf.lastCheckpointSeqId > CheckPointSequenceInterval {
 				checkpointArgs := &CheckpointArgs{}
 				checkpointArgs.LastCommitted = pf.maxCommitted
 				// todo: current state to digest
@@ -153,7 +206,15 @@ func (pf *Pbft) processCommits(seqId int) {
 				pf.boradcast("Checkpoint", checkpointArgs)
 			}
 		}
+
+		timestamp := logEntry.Request.Timestamp
+		if timer, ok := pf.requestTimer[timestamp]; ok {
+			timer.Cancel()
+			delete(pf.requestTimer, timestamp)
+		}
+
 		delete(pf.commits, seqId)
+		delete(pf.prepares, seqId)
 	}
 }
 
@@ -169,22 +230,118 @@ func (pf *Pbft) processCheckpoints(seqId int) {
 		return
 	}
 
+	if seqId <= pf.lastCheckpointSeqId {
+		return
+	}
+
 	if len(pf.checkpoints[seqId]) > 2*pf.f {
 		checkpoints := pf.checkpoints[seqId]
 		digestCnt := make(map[string]int)
-		isCheckpointValid := false
+		validDigest := ""
 		for _, digest := range checkpoints {
 			digestCnt[digest]++
 			if digestCnt[digest] > 2*pf.f {
-				isCheckpointValid = true
+				validDigest = digest
 				break
 			}
 		}
 
-		if isCheckpointValid {
-			pf.lastCheckpoint = seqId
+		if validDigest != "" {
+			pf.lastCheckpointSeqId = seqId
+			pf.lastCheckpointDigest = validDigest
 			pf.garbageCollect(seqId)
+			pf.viewChanges = make(map[int]map[int]PreparedRequest)
 		}
+	}
+}
+
+func (pf *Pbft) saveViewChange(seqId int, replicaId int, preparedRequestSet map[int]PreparedRequest) {
+	if seqId != pf.lastCheckpointSeqId {
+		return
+	}
+
+	// check valid prepared request
+	for seqId, preparedRequest := range preparedRequestSet {
+		if preparedRequest.Request.ViewId != pf.viewId {
+			delete(preparedRequestSet, seqId)
+			continue
+		}
+
+		if preparedRequest.Request.SeqId < pf.lastCheckpointSeqId {
+			delete(preparedRequestSet, seqId)
+			continue
+		}
+
+		prepares := preparedRequest.Prepares
+		if len(prepares) <= 2*pf.f {
+			delete(preparedRequestSet, seqId)
+			continue
+		}
+
+		isValid := false
+		digestCnt := make(map[string]int)
+		for _, digest := range prepares {
+			digestCnt[digest]++
+			if digestCnt[digest] > 2*pf.f {
+				isValid = true
+				break
+			}
+		}
+
+		if !isValid {
+			delete(preparedRequestSet, seqId)
+		}
+	}
+
+	pf.viewChanges[replicaId] = preparedRequestSet
+}
+
+func (pf *Pbft) provessViewChange(viewId int) {
+	// only primary
+	if (viewId)%pf.n != pf.me {
+		return
+	}
+
+	if len(pf.viewChanges) > 2*pf.f {
+		// combine all prepared requests
+		minSeq := pf.seqId
+		maxSeq := pf.lastCheckpointSeqId
+		allPreparedRequests := make(map[int]PreparedRequest)
+		for _, PreparedRequestSet := range pf.viewChanges {
+			for seqId, preparedRequest := range PreparedRequestSet {
+				allPreparedRequests[seqId] = preparedRequest
+				if seqId > maxSeq {
+					maxSeq = seqId
+				}
+
+				if seqId < minSeq {
+					minSeq = seqId
+				}
+			}
+		}
+
+		// find all not committed message between minSeq ~ maxSeq
+		// and generate new preprepare messages
+		newPreprepares := make(map[int]PrePrepareAgrs)
+		for seqId, logEntry := range pf.logs {
+			if seqId >= minSeq && seqId <= maxSeq {
+				if logEntry.ViewId == pf.viewId && logEntry.Phase != PbftPhasecommitted {
+					preprepareArgs := PrePrepareAgrs{}
+					preprepareArgs.ViewId = pf.viewId + 1
+					preprepareArgs.SeqId = seqId
+					preprepareArgs.Request = logEntry.Request
+					// todo: digest
+					preprepareArgs.Digest = "prepreare digest"
+					newPreprepares[seqId] = preprepareArgs
+				}
+			}
+		}
+
+		newViewAgrs := &NewViewArgs{}
+		newViewAgrs.ViewId = pf.viewId + 1
+		newViewAgrs.PreparedRequestSet = allPreparedRequests
+		newViewAgrs.NewPreprepares = newPreprepares
+		pf.boradcast("NewView", newViewAgrs)
 	}
 }
 
@@ -208,7 +365,7 @@ func (pf *Pbft) garbageCollect(seqId int) {
 	}
 
 	for id, log := range pf.logs {
-		if id <= seqId && log.Reply.Timestamp == 0 {
+		if id <= seqId && log.Phase != PbftPhasecommitted {
 			delete(pf.logs, id)
 		}
 	}
@@ -241,8 +398,9 @@ func MakePbft(id int, serverPeers, clientPeers []peerWrapper, debugCh chan inter
 	pf.requestTimer = make(map[int64]*TimerWithCancel)
 	pf.prepares = make(map[int]map[int]string)
 	pf.commits = make(map[int]map[int]string)
+	pf.viewChanges = make(map[int]map[int]PreparedRequest)
 	pf.maxCommitted = 0
-	pf.lastCheckpoint = 0
+	pf.lastCheckpointSeqId = 0
 	pf.n = len(pf.servers)
 	pf.f = (pf.n - 1) / 3
 	pf.debugCh = debugCh

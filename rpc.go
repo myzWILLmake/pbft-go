@@ -25,19 +25,21 @@ func (pf *Pbft) Request(args *RequestArgs, reply *DefaultReply) error {
 		// insert requset to log
 		pf.seqId++
 
-		newLog := &LogEntry{}
-		newLog.ViewId = pf.viewId
-		newLog.SeqId = pf.seqId
-		newLog.Request = RequestArgs{args.Operation, args.Timestamp, args.ClientId}
-		pf.logs[pf.seqId] = newLog
-
 		prepreareArgs := &PrePrepareAgrs{}
 		prepreareArgs.ViewId = pf.viewId
 		prepreareArgs.SeqId = pf.seqId
-		prepreareArgs.Request = newLog.Request
+		prepreareArgs.Request = *args
 		// todo: digest
 		prepreareArgs.Digest = "prepreare digest"
 		pf.boradcast("Preprepare", prepreareArgs)
+
+		newLog := &LogEntry{}
+		newLog.SeqId = prepreareArgs.SeqId
+		newLog.Request = prepreareArgs.Request
+		newLog.ViewId = pf.viewId
+		newLog.Phase = PbftPhasePrepare
+		pf.logs[prepreareArgs.SeqId] = newLog
+
 		return nil
 	} else {
 		// relay to primary
@@ -62,12 +64,17 @@ func (pf *Pbft) Preprepare(args *PrePrepareAgrs, reply *DefaultReply) error {
 
 	// todo: check sequence number h~H
 	// accept PrePrepare Msg
-
-	newLog := &LogEntry{}
-	newLog.SeqId = args.SeqId
-	newLog.Request = args.Request
-	newLog.ViewId = pf.viewId
-	pf.logs[args.SeqId] = newLog
+	var newLog *LogEntry
+	if pf.isPrimary() {
+		newLog = pf.logs[args.SeqId]
+	} else {
+		newLog = &LogEntry{}
+		newLog.SeqId = args.SeqId
+		newLog.Request = args.Request
+		newLog.ViewId = pf.viewId
+		newLog.Phase = PbftPhasePrepare
+		pf.logs[args.SeqId] = newLog
+	}
 
 	// save to prepares
 	pf.savePrepare(args.SeqId, pf.me, args.Digest)
@@ -118,8 +125,63 @@ func (pf *Pbft) CheckPoint(args *CheckpointArgs, reply *DefaultReply) error {
 	pf.mu.Lock()
 	defer pf.mu.Unlock()
 
-	pf.debugPrint(fmt.Sprintf("Received Checkpoint[LastCommitted %d, Digest %s, Rep %d]", args.LastCommitted, args.Digest, args.ReplicaId))
+	pf.debugPrint(fmt.Sprintf("Received Checkpoint[LastCommitted %d, Digest %s, Rep %d]\n", args.LastCommitted, args.Digest, args.ReplicaId))
 	pf.saveCheckpoints(args.LastCommitted, args.ReplicaId, args.Digest)
+	return nil
+}
+
+func (pf *Pbft) ViewChange(args *ViewChangeArgs, reply *DefaultReply) error {
+	pf.mu.Lock()
+	defer pf.mu.Unlock()
+
+	pf.debugPrint(fmt.Sprintf("Received ViewChange[ViewId %d, Rep %d, LastCheckpoint %d]\n", args.ViewId, args.ReplicaId, args.LastCheckpointSeqId))
+	// check view change message valid
+	if args.ViewId != pf.viewId+1 {
+		reply.Err = "Invalid viewId"
+		return nil
+	}
+
+	if args.LastCheckpointSeqId != pf.lastCheckpointSeqId {
+		reply.Err = "Invalid checkpoint sequenceId"
+		return nil
+	}
+
+	if args.LastCheckpointDigest != pf.lastCheckpointDigest {
+		reply.Err = "Invalid checkpoint digest"
+		return nil
+	}
+
+	pf.saveViewChange(args.LastCheckpointSeqId, args.ReplicaId, args.PreparedRequestSet)
+	pf.provessViewChange(args.ViewId)
+	return nil
+}
+
+func (pf *Pbft) NewView(args *NewViewArgs, reply *DefaultReply) error {
+	pf.mu.Lock()
+	defer pf.mu.Unlock()
+
+	pf.debugPrint(fmt.Sprintf("Received NewView[ViewId %d]\n", args.ViewId))
+	if args.ViewId != pf.viewId+1 {
+		reply.Err = "Invalid viewId"
+		return nil
+	}
+
+	// todo: check correctness of newPreprepares
+	// same as primary generating the newprepreares
+
+	// enter new view
+	pf.viewId = args.ViewId
+	pf.viewChanges = make(map[int]map[int]PreparedRequest)
+	for seqId, preprepareArgs := range args.NewPreprepares {
+		pf.logs[seqId] = nil
+		delete(pf.prepares, seqId)
+		delete(pf.commits, seqId)
+
+		reply := &DefaultReply{}
+		args := &preprepareArgs
+		go pf.Preprepare(args, reply)
+	}
+
 	return nil
 }
 

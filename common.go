@@ -1,6 +1,8 @@
 package pbft
 
-import "time"
+import (
+	"time"
+)
 
 type TimerWithCancel struct {
 	d time.Duration
@@ -37,9 +39,16 @@ func (t *TimerWithCancel) Cancel() {
 
 type PbftPhase int
 
+const (
+	PbftPhasePrepare = iota
+	PbftPhasecommit
+	PbftPhasecommitted
+)
+
 type LogEntry struct {
 	SeqId   int
 	ViewId  int
+	Phase   PbftPhase
 	Request RequestArgs
 	Reply   ReplyArgs
 }
@@ -86,4 +95,23 @@ type CheckpointArgs struct {
 	LastCommitted int
 	Digest        string
 	ReplicaId     int
+}
+
+type PreparedRequest struct {
+	Request  LogEntry
+	Prepares map[int]string
+}
+
+type ViewChangeArgs struct {
+	ViewId               int
+	ReplicaId            int
+	LastCheckpointSeqId  int
+	LastCheckpointDigest string
+	PreparedRequestSet   map[int]PreparedRequest
+}
+
+type NewViewArgs struct {
+	ViewId             int
+	PreparedRequestSet map[int]PreparedRequest
+	NewPreprepares     map[int]PrePrepareAgrs
 }
