@@ -42,8 +42,8 @@ func (pf *Pbft) isPrimary() bool {
 	return pf.me == pf.viewId%pf.n
 }
 
-func (pf *Pbft) boradcast(rpcname string, rpcargs interface{}) {
-	pf.debugPrint("Boradcast: " + rpcname + "\n")
+func (pf *Pbft) broadcast(rpcname string, rpcargs interface{}) {
+	pf.debugPrint("Broadcast: " + rpcname + "\n")
 	reply := &DefaultReply{}
 	maliciousMode := pf.maliciousModes[rpcname]
 	switch maliciousMode {
@@ -55,9 +55,9 @@ func (pf *Pbft) boradcast(rpcname string, rpcargs interface{}) {
 	case CrashedLikeMode:
 		return
 	case PartiallyMaliciousMode:
-		pf.maliciousBoardcast(rpcname, rpcargs, true)
+		pf.maliciousBroadcast(rpcname, rpcargs, true)
 	case MaliciousMode:
-		pf.maliciousBoardcast(rpcname, rpcargs, false)
+		pf.maliciousBroadcast(rpcname, rpcargs, false)
 	}
 }
 
@@ -114,7 +114,7 @@ func (pf *Pbft) sendViewChange() {
 	viewChangeArgs.LastCheckpointSeqId = pf.lastCheckpointSeqId
 	viewChangeArgs.PreparedRequestSet = preparedRequestSet
 
-	pf.boradcast("ViewChange", viewChangeArgs)
+	pf.broadcast("ViewChange", viewChangeArgs)
 }
 
 func (pf *Pbft) getReplyFromLog(args *RequestArgs) int {
@@ -179,7 +179,7 @@ func (pf *Pbft) processPrepares(seqId int) {
 		commitArgs.ViewId = pf.viewId
 		commitArgs.Digest = maxDigest
 		commitArgs.ReplicaId = pf.me
-		pf.boradcast("Commit", commitArgs)
+		pf.broadcast("Commit", commitArgs)
 
 		delete(pf.prepares, seqId)
 	}
@@ -220,7 +220,7 @@ func (pf *Pbft) processCommits(seqId int) {
 				// todo: current state to digest
 				checkpointArgs.Digest = "checkpoint digest"
 				checkpointArgs.ReplicaId = pf.me
-				pf.boradcast("Checkpoint", checkpointArgs)
+				pf.broadcast("Checkpoint", checkpointArgs)
 			}
 		}
 
@@ -358,7 +358,7 @@ func (pf *Pbft) provessViewChange(viewId int) {
 		newViewAgrs.ViewId = pf.viewId + 1
 		newViewAgrs.PreparedRequestSet = allPreparedRequests
 		newViewAgrs.NewPreprepares = newPreprepares
-		pf.boradcast("NewView", newViewAgrs)
+		pf.broadcast("NewView", newViewAgrs)
 	}
 }
 

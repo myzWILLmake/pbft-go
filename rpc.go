@@ -31,7 +31,7 @@ func (pf *Pbft) Request(args *RequestArgs, reply *DefaultReply) error {
 		prepreareArgs.Request = *args
 		// todo: digest
 		prepreareArgs.Digest = "prepreare digest"
-		pf.boradcast("Preprepare", prepreareArgs)
+		pf.broadcast("Preprepare", prepreareArgs)
 
 		newLog := &LogEntry{}
 		newLog.SeqId = prepreareArgs.SeqId
@@ -80,13 +80,13 @@ func (pf *Pbft) Preprepare(args *PrePrepareAgrs, reply *DefaultReply) error {
 	pf.savePrepare(args.SeqId, pf.me, args.Digest)
 	pf.processPrepares(args.SeqId)
 
-	// boardcast Prepare
+	// broadcast Prepare
 	prepareArgs := &PrepareArgs{}
 	prepareArgs.SeqId = newLog.SeqId
 	prepareArgs.ReplicaId = pf.me
 	prepareArgs.ViewId = pf.viewId
 	prepareArgs.Digest = args.Digest
-	pf.boradcast("Prepare", prepareArgs)
+	pf.broadcast("Prepare", prepareArgs)
 	return nil
 }
 

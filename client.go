@@ -19,7 +19,7 @@ type Client struct {
 	debugCh chan interface{}
 }
 
-func (c *Client) boradcast(rpcname string, rpcargs interface{}) {
+func (c *Client) broadcast(rpcname string, rpcargs interface{}) {
 	reply := &DefaultReply{}
 	for _, peer := range c.peers {
 		p := peer
@@ -38,7 +38,7 @@ func (c *Client) newRequest(command string) {
 
 	c.replies[requestArgs.Timestamp] = make(map[int]string)
 	c.requests[requestArgs.Timestamp] = command
-	c.boradcast("Request", requestArgs)
+	c.broadcast("Request", requestArgs)
 }
 
 func (c *Client) saveReply(replyArgs *ReplyArgs) {

@@ -19,7 +19,7 @@ func (pf *Pbft) setMaliciousMode(rpcname string, maliciousMode int, partialVal i
 	return nil
 }
 
-func (pf *Pbft) maliciousBoardcast(rpcname string, rpcargs interface{}, isPartial bool) {
+func (pf *Pbft) maliciousBroadcast(rpcname string, rpcargs interface{}, isPartial bool) {
 	realArgs := rpcargs
 	var fakeArgs interface{}
 	switch rpcname {
