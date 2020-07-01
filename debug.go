@@ -22,7 +22,9 @@ type DebugServerBase struct {
 func (ds *DebugServerBase) getNotifyMsg() {
 	for true {
 		msg := <-ds.notifyCh
-		fmt.Println(msg)
+		for _, conn := range ds.clients {
+			conn.Write([]byte(msg.(string)))
+		}
 	}
 }
 
