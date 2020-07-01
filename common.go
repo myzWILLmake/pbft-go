@@ -115,3 +115,12 @@ type NewViewArgs struct {
 	PreparedRequestSet map[int]PreparedRequest
 	NewPreprepares     map[int]PrePrepareAgrs
 }
+
+type MaliciousBehaviorMode int
+
+const (
+	NormalMode = iota
+	CrashedLikeMode
+	PartiallyMaliciousMode
+	MaliciousMode
+)

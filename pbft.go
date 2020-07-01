@@ -28,7 +28,14 @@ type Pbft struct {
 	lastCheckpointSeqId  int
 	lastCheckpointDigest string
 
+	// debug
 	debugCh chan interface{}
+
+	// malicious behaviors
+	// string: rpc method name
+	maliciousModes map[string]MaliciousBehaviorMode
+	// define how many malicious msgs in PartiallyMaliciousMode
+	maliciousPartialVal int
 }
 
 func (pf *Pbft) isPrimary() bool {
@@ -38,9 +45,19 @@ func (pf *Pbft) isPrimary() bool {
 func (pf *Pbft) boradcast(rpcname string, rpcargs interface{}) {
 	pf.debugPrint("Boradcast: " + rpcname + "\n")
 	reply := &DefaultReply{}
-	for _, peer := range pf.servers {
-		p := peer
-		go p.Call("Pbft."+rpcname, rpcargs, reply)
+	maliciousMode := pf.maliciousModes[rpcname]
+	switch maliciousMode {
+	case NormalMode:
+		for _, peer := range pf.servers {
+			p := peer
+			go p.Call("Pbft."+rpcname, rpcargs, reply)
+		}
+	case CrashedLikeMode:
+		return
+	case PartiallyMaliciousMode:
+		pf.maliciousBoardcast(rpcname, rpcargs, true)
+	case MaliciousMode:
+		pf.maliciousBoardcast(rpcname, rpcargs, false)
 	}
 }
 
@@ -404,6 +421,13 @@ func MakePbft(id int, serverPeers, clientPeers []peerWrapper, debugCh chan inter
 	pf.n = len(pf.servers)
 	pf.f = (pf.n - 1) / 3
 	pf.debugCh = debugCh
+	pf.maliciousModes = make(map[string]MaliciousBehaviorMode)
+	pf.maliciousModes["Preprepare"] = NormalMode
+	pf.maliciousModes["Prepare"] = NormalMode
+	pf.maliciousModes["Commit"] = NormalMode
+	pf.maliciousModes["Checkpoint"] = NormalMode
+	pf.maliciousModes["ViewChange"] = NormalMode
+	pf.maliciousModes["NewView"] = NormalMode
 
 	return pf
 }

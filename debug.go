@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -73,8 +74,40 @@ seqId:		%d
 	conn.Write([]byte(msg))
 }
 
+func (pds *PbftDebugServer) handleMaliciousBehavior(conn net.Conn, args []string) {
+	if len(args) < 3 {
+		conn.Write([]byte("Arguments not enough: rpcname mode [partial value]\n"))
+		return
+	}
+
+	rpcname := args[1]
+	mbmode, err := strconv.Atoi(args[2])
+	partialVal := 0
+	if err != nil {
+		conn.Write([]byte("Invalid malicious mode\n"))
+		return
+	}
+	if len(args) == 4 {
+		partialVal, err = strconv.Atoi(args[3])
+		if err != nil {
+			conn.Write([]byte("Invalid partial value\n"))
+			return
+		}
+	}
+
+	err = pds.pbftServer.setMaliciousMode(rpcname, mbmode, partialVal)
+	if err != nil {
+		conn.Write([]byte(err.Error() + "\n"))
+		return
+	}
+
+	conn.Write([]byte(fmt.Sprintf("malicious behavior set. rpcname[%s] mode[%d]\n", rpcname, mbmode)))
+}
+
 func (pds *PbftDebugServer) handleConnArgs(conn net.Conn, args []string) {
 	switch args[0] {
+	case "mb":
+		pds.handleMaliciousBehavior(conn, args)
 	case "kill":
 		conn.Write([]byte("Kill Server...\n"))
 		conn.Close()
