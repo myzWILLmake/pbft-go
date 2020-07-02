@@ -56,25 +56,59 @@ func (pf *Pbft) maliciousBroadcast(rpcname string, rpcargs interface{}, isPartia
 
 // just a sample here for each malicious behavior
 func (pf *Pbft) maliciousPreprepare(args *PrePrepareAgrs) *PrePrepareAgrs {
-	return nil
+	newArgs := &PrePrepareAgrs{}
+	newArgs.ViewId = args.ViewId
+	newArgs.SeqId = args.SeqId
+	// todo: generate fake digest
+	newArgs.Digest = "fake digest"
+	newArgs.Request = args.Request
+	newArgs.Request.Operation = "fake Operation"
+	return newArgs
 }
 
 func (pf *Pbft) maliciousPrepare(args *PrepareArgs) *PrepareArgs {
-	return nil
+	newArgs := &PrepareArgs{}
+	newArgs.ReplicaId = pf.me
+	newArgs.ViewId = args.ViewId
+	newArgs.SeqId = args.SeqId
+	// todo: generate fake digest
+	newArgs.Digest = "fake digest"
+	return newArgs
 }
 
 func (pf *Pbft) maliciousCommit(args *CommitArgs) *CommitArgs {
-	return nil
+	newArgs := &CommitArgs{}
+	newArgs.ReplicaId = pf.me
+	newArgs.ViewId = args.ViewId
+	newArgs.SeqId = args.SeqId
+	// todo: generate fake digest
+	newArgs.Digest = "fake digest"
+	return newArgs
 }
 
 func (pf *Pbft) maliciousCheckpoint(args *CheckpointArgs) *CheckpointArgs {
-	return nil
+	newArgs := &CheckpointArgs{}
+	newArgs.ReplicaId = pf.me
+	newArgs.LastCommitted = args.LastCommitted + 1
+	// todo: generate fake state digest
+	newArgs.Digest = "fake state digest"
+	return newArgs
 }
 
 func (pf *Pbft) maliciousViewChange(args *ViewChangeArgs) *ViewChangeArgs {
-	return nil
+	newArgs := &ViewChangeArgs{}
+	newArgs.ReplicaId = pf.me
+	newArgs.ViewId = args.ViewId + 1
+	newArgs.LastCheckpointSeqId = args.LastCheckpointSeqId
+	newArgs.LastCheckpointDigest = args.LastCheckpointDigest
+	newArgs.PreparedRequestSet = make(map[int]PreparedRequest)
+	return newArgs
 }
 
 func (pf *Pbft) maliciousNewView(args *NewViewArgs) *NewViewArgs {
-	return nil
+	newArgs := &NewViewArgs{}
+	newArgs.ViewId = args.ViewId + 1
+	newArgs.NewPreprepares = args.NewPreprepares
+	newArgs.PreparedRequestSet = args.PreparedRequestSet
+	return newArgs
 }
