@@ -30,7 +30,7 @@ func (pf *Pbft) Request(args *RequestArgs, reply *DefaultReply) error {
 		prepreareArgs.SeqId = pf.seqId
 		prepreareArgs.Request = *args
 		// todo: digest
-		prepreareArgs.Digest = "prepreare digest"
+		prepreareArgs.Digest = args.Operation.(string)
 		pf.broadcast("Preprepare", prepreareArgs)
 
 		newLog := &LogEntry{}
@@ -43,10 +43,9 @@ func (pf *Pbft) Request(args *RequestArgs, reply *DefaultReply) error {
 		return nil
 	} else {
 		// relay to primary
-		// todo: request timer
-		n := len(pf.servers)
-		primaryId := pf.viewId % n
-		go pf.servers[primaryId].Call("Pbft.Request", args, reply)
+		// n := len(pf.servers)
+		// primaryId := pf.viewId % n
+		// go pf.servers[primaryId].Call("Pbft.Request", args, reply)
 		return nil
 	}
 	return nil
@@ -60,7 +59,7 @@ func (pf *Pbft) Preprepare(args *PrePrepareAgrs, reply *DefaultReply) error {
 		return nil
 	}
 
-	pf.debugPrint(fmt.Sprintf("Received Preprepare[Seq %d, View %d]\n", args.SeqId, args.ViewId))
+	pf.debugPrint(fmt.Sprintf("Received Preprepare[Seq %d, View %d, Digest %s]\n", args.SeqId, args.ViewId, args.Digest))
 
 	// todo: check sequence number h~H
 	// accept PrePrepare Msg
@@ -98,7 +97,7 @@ func (pf *Pbft) Prepare(args *PrepareArgs, reply *DefaultReply) error {
 		return nil
 	}
 
-	pf.debugPrint(fmt.Sprintf("Received Prepare[Seq %d, View %d, Rep %d]\n", args.SeqId, args.ViewId, args.ReplicaId))
+	pf.debugPrint(fmt.Sprintf("Received Prepare[Seq %d, View %d, Rep %d, Digest %s]\n", args.SeqId, args.ViewId, args.ReplicaId, args.Digest))
 	// todo: check sequence number h~H
 
 	pf.savePrepare(args.SeqId, args.ReplicaId, args.Digest)
@@ -114,7 +113,7 @@ func (pf *Pbft) Commit(args *CommitArgs, reply *DefaultReply) error {
 		return nil
 	}
 
-	pf.debugPrint(fmt.Sprintf("Received Commit[Seq %d, View %d, Rep %d]\n", args.SeqId, args.ViewId, args.ReplicaId))
+	pf.debugPrint(fmt.Sprintf("Received Commit[Seq %d, View %d, Rep %d, Digest %s]\n", args.SeqId, args.ViewId, args.ReplicaId, args.Digest))
 	// todo: check sequence number h~H
 	pf.saveCommits(args.SeqId, args.ReplicaId, args.Digest)
 	pf.processCommits(args.SeqId)
@@ -188,7 +187,7 @@ func (pf *Pbft) NewView(args *NewViewArgs, reply *DefaultReply) error {
 func (c *Client) Reply(args *ReplyArgs, reply *DefaultReply) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.debugPrint(fmt.Sprintf("Received Reply[%d, %d, %d] from ReplicaId[%d]\n", args.Timestamp, args.ReplicaId, args.ViewId, args.ReplicaId))
+	c.debugPrint(fmt.Sprintf("Received Reply[%d, %s, %d] from ReplicaId[%d]\n", args.Timestamp, args.Result, args.ViewId, args.ReplicaId))
 	c.saveReply(args)
 	c.processReplies(args.Timestamp)
 	return nil

@@ -2,6 +2,7 @@ package pbft
 
 import (
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -218,7 +219,7 @@ func (pf *Pbft) processCommits(seqId int) {
 				checkpointArgs := &CheckpointArgs{}
 				checkpointArgs.LastCommitted = pf.maxCommitted
 				// todo: current state to digest
-				checkpointArgs.Digest = "checkpoint digest"
+				checkpointArgs.Digest = "checkpoint " + strconv.Itoa(pf.maxCommitted)
 				checkpointArgs.ReplicaId = pf.me
 				pf.broadcast("Checkpoint", checkpointArgs)
 			}
@@ -348,7 +349,7 @@ func (pf *Pbft) provessViewChange(viewId int) {
 					preprepareArgs.SeqId = seqId
 					preprepareArgs.Request = logEntry.Request
 					// todo: digest
-					preprepareArgs.Digest = "prepreare digest"
+					preprepareArgs.Digest = logEntry.Request.Operation.(string)
 					newPreprepares[seqId] = preprepareArgs
 				}
 			}

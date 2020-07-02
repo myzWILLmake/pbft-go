@@ -60,9 +60,9 @@ func (pf *Pbft) maliciousPreprepare(args *PrePrepareAgrs) *PrePrepareAgrs {
 	newArgs.ViewId = args.ViewId
 	newArgs.SeqId = args.SeqId
 	// todo: generate fake digest
-	newArgs.Digest = "fake digest"
+	newArgs.Digest = "fake cmd"
 	newArgs.Request = args.Request
-	newArgs.Request.Operation = "fake Operation"
+	newArgs.Request.Operation = "fake cmd"
 	return newArgs
 }
 
@@ -72,7 +72,7 @@ func (pf *Pbft) maliciousPrepare(args *PrepareArgs) *PrepareArgs {
 	newArgs.ViewId = args.ViewId
 	newArgs.SeqId = args.SeqId
 	// todo: generate fake digest
-	newArgs.Digest = "fake digest"
+	newArgs.Digest = "fake"
 	return newArgs
 }
 
@@ -82,7 +82,7 @@ func (pf *Pbft) maliciousCommit(args *CommitArgs) *CommitArgs {
 	newArgs.ViewId = args.ViewId
 	newArgs.SeqId = args.SeqId
 	// todo: generate fake digest
-	newArgs.Digest = "fake digest"
+	newArgs.Digest = "fake"
 	return newArgs
 }
 
@@ -91,7 +91,7 @@ func (pf *Pbft) maliciousCheckpoint(args *CheckpointArgs) *CheckpointArgs {
 	newArgs.ReplicaId = pf.me
 	newArgs.LastCommitted = args.LastCommitted + 1
 	// todo: generate fake state digest
-	newArgs.Digest = "fake state digest"
+	newArgs.Digest = "fake state"
 	return newArgs
 }
 
