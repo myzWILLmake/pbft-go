@@ -61,7 +61,13 @@ func (pf *Pbft) Preprepare(args *PrePrepareAgrs, reply *DefaultReply) error {
 
 	pf.debugPrint(fmt.Sprintf("Received Preprepare[Seq %d, View %d, Digest %s]\n", args.SeqId, args.ViewId, args.Digest))
 
-	// todo: check sequence number h~H
+	lowSeqLevel := pf.lastCheckpointSeqId
+	highSeqLevel := pf.lastCheckpointSeqId + 2*CheckPointSequenceInterval
+	if args.SeqId <= lowSeqLevel || args.SeqId > highSeqLevel {
+		pf.debugPrint(fmt.Sprintf("Preprepare msg is invalid: invalid sequence id %d.\n"))
+		return nil
+	}
+
 	// accept PrePrepare Msg
 	var newLog *LogEntry
 	if pf.isPrimary() {
@@ -98,7 +104,6 @@ func (pf *Pbft) Prepare(args *PrepareArgs, reply *DefaultReply) error {
 	}
 
 	pf.debugPrint(fmt.Sprintf("Received Prepare[Seq %d, View %d, Rep %d, Digest %s]\n", args.SeqId, args.ViewId, args.ReplicaId, args.Digest))
-	// todo: check sequence number h~H
 
 	pf.savePrepare(args.SeqId, args.ReplicaId, args.Digest)
 	pf.processPrepares(args.SeqId)
@@ -114,7 +119,7 @@ func (pf *Pbft) Commit(args *CommitArgs, reply *DefaultReply) error {
 	}
 
 	pf.debugPrint(fmt.Sprintf("Received Commit[Seq %d, View %d, Rep %d, Digest %s]\n", args.SeqId, args.ViewId, args.ReplicaId, args.Digest))
-	// todo: check sequence number h~H
+
 	pf.saveCommits(args.SeqId, args.ReplicaId, args.Digest)
 	pf.processCommits(args.SeqId)
 	return nil
