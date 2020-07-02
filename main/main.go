@@ -23,7 +23,7 @@ type X struct {
 }
 
 func main() {
-	if len(os.Args) != 3 {
+	if len(os.Args) < 3 {
 		log.Fatal("Invalid augments")
 		return
 	}
