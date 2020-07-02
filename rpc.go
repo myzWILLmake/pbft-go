@@ -120,7 +120,7 @@ func (pf *Pbft) Commit(args *CommitArgs, reply *DefaultReply) error {
 	return nil
 }
 
-func (pf *Pbft) CheckPoint(args *CheckpointArgs, reply *DefaultReply) error {
+func (pf *Pbft) Checkpoint(args *CheckpointArgs, reply *DefaultReply) error {
 	pf.mu.Lock()
 	defer pf.mu.Unlock()
 
