@@ -432,6 +432,7 @@ func MakePbft(id int, serverPeers, clientPeers []peerWrapper, debugCh chan inter
 	pf.requestTimer = make(map[int64]*TimerWithCancel)
 	pf.prepares = make(map[int]map[int]string)
 	pf.commits = make(map[int]map[int]string)
+	pf.checkpoints = make(map[int]map[int]string)
 	pf.viewChanges = make(map[int]map[int]PreparedRequest)
 	pf.maxCommitted = 0
 	pf.lastCheckpointSeqId = 0
