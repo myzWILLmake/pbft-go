@@ -45,10 +45,10 @@ func (pf *Pbft) isPrimary() bool {
 
 func (pf *Pbft) broadcast(rpcname string, rpcargs interface{}) {
 	pf.debugPrint("Broadcast: " + rpcname + "\n")
-	reply := &DefaultReply{}
 	maliciousMode := pf.maliciousModes[rpcname]
 	switch maliciousMode {
 	case NormalMode:
+		reply := &DefaultReply{}
 		for _, peer := range pf.servers {
 			p := peer
 			go p.Call("Pbft."+rpcname, rpcargs, reply)
@@ -59,6 +59,24 @@ func (pf *Pbft) broadcast(rpcname string, rpcargs interface{}) {
 		pf.maliciousBroadcast(rpcname, rpcargs, true)
 	case MaliciousMode:
 		pf.maliciousBroadcast(rpcname, rpcargs, false)
+	}
+}
+
+func (pf *Pbft) replyClient(clientId int, replyArgs *ReplyArgs) {
+	pf.debugPrint(fmt.Sprintf("Reply to client[%d]\n", clientId))
+	client := pf.clients[clientId]
+	defaultReply := &DefaultReply{}
+	switch pf.maliciousModes["Reply"] {
+	case NormalMode:
+		go client.Call("Client.Reply", replyArgs, defaultReply)
+	case CrashedLikeMode:
+		return
+	case PartiallyMaliciousMode:
+		// not valid in client reply
+		return
+	case MaliciousMode:
+		fakeArgs := pf.maliciousReply(replyArgs)
+		go client.Call("Client.Reply", fakeArgs, defaultReply)
 	}
 }
 
@@ -208,9 +226,7 @@ func (pf *Pbft) processCommits(seqId int) {
 		replyArgs.Result = logEntry.Request.Operation
 		logEntry.Reply = *replyArgs
 
-		client := pf.clients[logEntry.Request.ClientId]
-		defaultReply := &DefaultReply{}
-		go client.Call("Client.Reply", replyArgs, defaultReply)
+		pf.replyClient(logEntry.Request.ClientId, replyArgs)
 
 		if seqId > pf.maxCommitted {
 			pf.maxCommitted = seqId

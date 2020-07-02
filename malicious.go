@@ -9,6 +9,7 @@ func (pf *Pbft) setAllMaliciousMode(maliciousMode MaliciousBehaviorMode) {
 	pf.maliciousModes["Checkpoint"] = maliciousMode
 	pf.maliciousModes["ViewChange"] = maliciousMode
 	pf.maliciousModes["NewView"] = maliciousMode
+	pf.maliciousModes["Reply"] = maliciousMode
 }
 
 func (pf *Pbft) setMaliciousMode(rpcname string, maliciousMode int, partialVal int) error {
@@ -125,5 +126,14 @@ func (pf *Pbft) maliciousNewView(args *NewViewArgs) *NewViewArgs {
 	newArgs.ViewId = args.ViewId + 1
 	newArgs.NewPreprepares = args.NewPreprepares
 	newArgs.PreparedRequestSet = args.PreparedRequestSet
+	return newArgs
+}
+
+func (pf *Pbft) maliciousReply(args *ReplyArgs) *ReplyArgs {
+	newArgs := &ReplyArgs{}
+	newArgs.ReplicaId = pf.me
+	newArgs.ViewId = args.ViewId
+	newArgs.Timestamp = args.Timestamp
+	newArgs.Result = "fake Result"
 	return newArgs
 }
