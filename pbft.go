@@ -423,12 +423,7 @@ func MakePbft(id int, serverPeers, clientPeers []peerWrapper, debugCh chan inter
 	pf.f = (pf.n - 1) / 3
 	pf.debugCh = debugCh
 	pf.maliciousModes = make(map[string]MaliciousBehaviorMode)
-	pf.maliciousModes["Preprepare"] = NormalMode
-	pf.maliciousModes["Prepare"] = NormalMode
-	pf.maliciousModes["Commit"] = NormalMode
-	pf.maliciousModes["Checkpoint"] = NormalMode
-	pf.maliciousModes["ViewChange"] = NormalMode
-	pf.maliciousModes["NewView"] = NormalMode
+	pf.setAllMaliciousMode(NormalMode)
 
 	return pf
 }

@@ -2,17 +2,32 @@ package pbft
 
 import "errors"
 
+func (pf *Pbft) setAllMaliciousMode(maliciousMode MaliciousBehaviorMode) {
+	pf.maliciousModes["Preprepare"] = maliciousMode
+	pf.maliciousModes["Prepare"] = maliciousMode
+	pf.maliciousModes["Commit"] = maliciousMode
+	pf.maliciousModes["Checkpoint"] = maliciousMode
+	pf.maliciousModes["ViewChange"] = maliciousMode
+	pf.maliciousModes["NewView"] = maliciousMode
+}
+
 func (pf *Pbft) setMaliciousMode(rpcname string, maliciousMode int, partialVal int) error {
 	pf.mu.Lock()
 	defer pf.mu.Unlock()
-	_, ok := pf.maliciousModes[rpcname]
-	if !ok {
-		return errors.New("Invalid rpcname")
-	}
 	if maliciousMode < 0 || maliciousMode > MaliciousMode {
 		return errors.New("Invalid malicious mode")
 	}
-	pf.maliciousModes[rpcname] = MaliciousBehaviorMode(maliciousMode)
+
+	if rpcname == "all" {
+		pf.setAllMaliciousMode(MaliciousBehaviorMode(maliciousMode))
+	} else {
+		_, ok := pf.maliciousModes[rpcname]
+		if !ok {
+			return errors.New("Invalid rpcname")
+		}
+		pf.maliciousModes[rpcname] = MaliciousBehaviorMode(maliciousMode)
+	}
+
 	if maliciousMode == PartiallyMaliciousMode {
 		pf.maliciousPartialVal = partialVal
 	}
