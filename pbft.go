@@ -68,7 +68,7 @@ func (pf *Pbft) newRequestTimer(timestamp int64) {
 	}
 	newTimer := NewTimerWithCancel(time.Duration(RequestTimeout * time.Millisecond))
 	newTimer.SetTimeout(func() {
-		fmt.Printf("Request timeout: Timestamp[%d]\n", timestamp)
+		pf.debugPrint(fmt.Sprintf("Request timeout: Timestamp[%d]\n", timestamp))
 		delete(pf.requestTimer, timestamp)
 		// todo: timer for viewchange
 		pf.sendViewChange()
